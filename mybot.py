@@ -46,7 +46,7 @@ def echo_all(message):
         print(f"Error: {e}")
 
 # Запуск бота
-if name == "__main__":
+if __name__ == "__main__":
     print("Запуск сервера анти-сна...")
     keep_alive()
     print("Бот запущен!")
