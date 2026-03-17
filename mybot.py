@@ -1,80 +1,53 @@
 import os
 import telebot
-from google import genai
-from PIL import Image
-import io
+import google.generativeai as genai
+from flask import Flask
+from threading import Thread
 
-# Токены
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+# --- БЛОК АНТИ-СНА ---
+app = Flask('')
 
-bot = telebot.TeleBot(BOT_TOKEN)
-client = genai.Client(api_key=GEMINI_API_KEY)
+@app.route('/')
+def home():
+    return "I am alive!"
 
-# --- Диагностика моделей (как и раньше) ---
-print("🔍 Доступные модели (поддерживающие generateContent):")
-try:
-    model_list = list(client.models.list())
-    available_models = [m.name for m in model_list if 'generateContent' in m.supported_actions]
-    for name in available_models:
-        print(f"  - {name}")
-    if available_models:
-        ACTIVE_MODEL = available_models[0]
-        print(f"✅ Используем модель: {ACTIVE_MODEL}")
-    else:
-        ACTIVE_MODEL = "gemini-2.0-flash-exp"
-        print("⚠️ Не найдено подходящих моделей, пробуем gemini-2.0-flash-exp")
-except Exception as e:
-    print(f"❌ Ошибка при получении списка моделей: {e}")
-    ACTIVE_MODEL = "gemini-2.0-flash-exp"
-    print(f"⚠️ Используем запасную модель: {ACTIVE_MODEL}")
-# -------------------------------------------
+def run():
+    app.run(host='0.0.0.0', port=8080)
 
-@bot.message_handler(content_types=['text', 'photo'])
-def handle_message(message):
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+# ---------------------
+
+# Получаем токены из настроек Render (Environment Variables)
+TOKEN = os.environ.get('BOT_TOKEN')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+
+# Настройка Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-pro')
+
+bot = telebot.TeleBot(TOKEN)
+
+# Обработка команды /start
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "Привет! Я твой бот на базе Gemini. Напиши мне любой вопрос!")
+
+# Обработка текстовых сообщений
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
     try:
-        bot.send_chat_action(message.chat.id, 'typing')
-        
-        # Подготавливаем содержимое для Gemini
-        contents = []
-        
-        # Если есть текст, добавляем его
-        if message.text:
-            contents.append(message.text)
-        elif message.caption:  # если подпись к фото
-            contents.append(message.caption)
-        else:
-            contents.append("Опиши это изображение подробно")  # запрос по умолчанию
-        
-        # Если есть фото, скачиваем и добавляем
-        if message.photo:
-            # Берем фото в наилучшем качестве (последнее в списке)
-            file_id = message.photo[-1].file_id
-            file_info = bot.get_file(file_id)
-            downloaded_file = bot.download_file(file_info.file_path)
-            
-            # Конвертируем в PIL Image для отправки в Gemini
-            image = Image.open(io.BytesIO(downloaded_file))
-            contents.append(image)
-            
-            print(f"📸 Получено фото, размер: {len(downloaded_file)} байт")
-        
-        # Отправляем запрос в Gemini
-        response = client.models.generate_content(
-            model=ACTIVE_MODEL,
-            contents=contents
-        )
-        
-        # Отправляем ответ
-        if response and hasattr(response, 'text') and response.text:
-            bot.reply_to(message, response.text)
-        else:
-            bot.reply_to(message, "🤔 Не удалось обработать изображение")
-            
+        # Отправляем текст в Gemini
+        response = model.generate_content(message.text)
+        bot.reply_to(message, response.text)
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
-        bot.reply_to(message, f"⚠️ Ошибка при обработке: {e}")
+        bot.reply_to(message, "Произошла ошибка при генерации ответа. Проверь API ключ.")
+        print(f"Error: {e}")
 
-print("✅ Мультимодальный бот запущен!")
-print("📸 Можно отправлять фото с вопросами!")
-bot.infinity_polling()
+# Запуск бота
+if name == "__main__":
+    print("Запуск сервера анти-сна...")
+    keep_alive()
+    print("Бот запущен!")
+    bot.polling(none_stop=True)
