@@ -40,9 +40,16 @@ def echo_all(message):
     try:
         # Отправляем текст в Gemini
         response = model.generate_content(message.text)
-        bot.reply_to(message, response.text)
+        
+        # Пробуем разные способы достать текст (защита от ошибок библиотеки)
+        if hasattr(response, 'text'):
+            bot.reply_to(message, response.text)
+        else:
+            bot.reply_to(message, response.candidates[0].content.parts[0].text)
+            
     except Exception as e:
-        bot.reply_to(message, "Произошла ошибка при генерации ответа. Проверь API ключ.")
+        # Теперь бот пришлет саму ошибку, чтобы мы поняли, в чем дело
+        bot.reply_to(message, f"Ошибка Gemini: {str(e)}")
         print(f"Error: {e}")
 
 # Запуск бота
